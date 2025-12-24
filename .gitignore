@@ -1,0 +1,17 @@
+# --- 忽略資料檔 (這是最重要的！) ---
+data/
+*.csv
+*.xlsx
+
+# --- 忽略 Python 編譯檔 ---
+__pycache__/
+*.py[cod]
+
+# --- 忽略 Jupyter Notebook 的暫存檔 ---
+.ipynb_checkpoints/
+
+# --- 忽略 VS Code 設定檔 (看個人習慣，通常建議忽略) ---
+.vscode/
+
+# --- 忽略 Mac 系統檔 (如果你是用 Mac) ---
+.DS_Store
