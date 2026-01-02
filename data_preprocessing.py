@@ -16,7 +16,6 @@ def clean_data(df):
     df = df.replace([np.inf, -np.inf], np.nan)
 
     # 3. 補缺值 (先 ffill 再 fillna 0)
-    # 這裡就是您定義「如何處理缺失值」的地方
     df = df.ffill().fillna(0)
 
     print("✅ 資料清洗完成！沒有 NaN 了。")

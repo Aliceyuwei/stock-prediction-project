@@ -1,17 +1,41 @@
-# --- 忽略資料檔 (這是最重要的！) ---
+# --- 1. 忽略 Python 編譯產生的垃圾 (一定要加) ---
+__pycache__/
+*.pyc
+
+# --- 2. 忽略作業系統產生的垃圾 (Mac 常見) --- 
+.DS_Store
+
+# --- 3. 忽略資料集 (Data) ---
+# 絕對不要上傳資料集，因為可能涉及版權或太佔空間
 data/
 *.csv
-*.xlsx
+# 但保留 sample_submission 或很小的 config 檔是可以的
+!data/sample_submission.csv
 
-# --- 忽略 Python 編譯檔 ---
-__pycache__/
-*.py[cod]
+# --- 4. 忽略輸出與模型 (Outputs) ---
+# 忽略所有產出的模型檔案
+*.pkl
+*.model
+*.h5
+*.joblib
+experiments/models/*.pkl
+experiments/models/*.model
+experiments/temp/
 
-# --- 忽略 Jupyter Notebook 的暫存檔 ---
+# --- 5. 忽略最終的預測結果 (因為每次跑都會變，沒必要留紀錄) ---
+submission.csv
+
+# --- 6. 忽略 Jupyter Notebook 的 checkpoint --- 
 .ipynb_checkpoints/
+checkpoints/
 
-# --- 忽略 VS Code 設定檔 (看個人習慣，通常建議忽略) ---
-.vscode/
+# --- 7. 忽略草稿資料夾 (看你想不想上傳，通常可以不上傳) --- 
+archive/
+drafts/
 
-# --- 忽略 Mac 系統檔 (如果你是用 Mac) ---
-.DS_Store
+# ==========================================
+# ✅ 關鍵：我们要保留「訓練紀錄 (Logs)」
+# ==========================================
+# 假設你的 experiment_logger.py 會產出 CSV 紀錄檔
+# 我們不要忽略 experiments 資料夾底下的 .csv
+!experiments/*.csv
