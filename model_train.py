@@ -75,13 +75,21 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
         def objective(trial):
             # 讓 AI 隨機嘗試這些參數
             params = {
-                # 限制樹的深度，不讓它太深 (原本 max 10 太深了)
-                'n_estimators': trial.suggest_int('n_estimators', 500, 1500),
-                'max_depth': trial.suggest_int('max_depth', 3, 6), 
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1),
-                # 增加正則化懲罰 (懲罰太複雜的模型)
-                'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 10.0),
-                'reg_lambda': trial.suggest_float('reg_lambda', 0.1, 10.0),
+                # 1. 【核心戰術】以慢打快：更多樹，但每棵樹學少一點
+                'n_estimators': trial.suggest_int('n_estimators', 1500, 3500), # 拉高上限
+                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.05), # 降低學習率
+                
+                # 2. 深度控制：給它一點點空間，從 3-6 放寬到 3-7
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                
+                # 3. 正則化 (維持剛才的 Log 模式，這很棒)
+                'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
+                
+                # 4. 稍微調低 min_child_weight (原本 1-10 有點太嚴格，改 1-5)
+                'min_child_weight': trial.suggest_int('min_child_weight', 1, 5),
+                
+                # 其他維持不變
                 'subsample': trial.suggest_float('subsample', 0.6, 0.85),
                 'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 0.85),
                 'n_jobs': -1,
