@@ -3,6 +3,10 @@
 # =================================================
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import datetime
 
 # =================================================
 # 2. 機器學習模型與調參工具
@@ -15,7 +19,15 @@ import optuna
 # =================================================
 # 3. 模型評估指標
 # =================================================
-from sklearn.metrics import mean_squared_error 
+from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error 
+
+# ---------------------------
+# import matplotlib
+# matplotlib.use('TkAgg') # Mac 環境建議維持 TkAgg
+# ---------------------------
+
+# 設定 Seaborn 風格
+sns.set_style("whitegrid")
 
 def train_and_predict(df_features, submission_file='sample_submission.csv', use_optuna=False):
     """
@@ -24,9 +36,19 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
     """
     print("🚀 [Training] 啟動模型訓練生產線...")
     
+    # 建立圖片儲存路徑
+    plot_dir = "experiments/plots"
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+
     # =================================================
     # 1. 準備資料與定義目標
     # =================================================
+    if not os.path.exists(submission_file):
+        # 防呆機制：如果找不到 sample 檔案，嘗試尋找根目錄的 submission.csv
+        submission_file = 'submission.csv'
+        
     # 讀取考卷，確認要預測哪些 ID (Date)
     submit_df = pd.read_csv(submission_file)
     target_ids = submit_df['date'].values 
@@ -146,6 +168,41 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
         val_preds = model_for_score.predict(X_val)
         val_score = np.sqrt(mean_squared_error(y_val, val_preds))
         print(f"✅ 手動模式驗證分數: {val_score:.4f}")
+
+    # =================================================
+    # 畫圖並儲存紀錄
+    # =================================================
+    model.fit(X_train, y_train)
+    preds = model.predict(X_val)
+    mape = mean_absolute_percentage_error(y_val, preds)
+
+    # 圖 A: 預測走勢
+    plt.figure(figsize=(12, 5))
+    plt.plot(X_val.index, y_val, label='Actual', color='blue', marker='o', markersize=4)
+    plt.plot(X_val.index, preds, label='Predicted', color='red', linestyle='--', marker='x', markersize=4)
+    plt.title(f"Validation: {timestamp} (RMSE: {val_score:.4f}, MAPE: {mape:.2%})")
+    plt.xticks(rotation=45)
+    plt.legend()
+    plt.tight_layout()
+    # 儲存
+    val_plot_name = f"{plot_dir}/val_{timestamp}_rmse_{val_score:.2f}.png"
+    plt.savefig(val_plot_name)
+    print(f"📊 驗證走勢圖已儲存: {val_plot_name}")
+    # plt.show()
+
+    # 圖 B: 特徵重要性
+    plt.figure(figsize=(10, 6))
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1][:15]
+    plt.title(f"Top 15 Features_{timestamp}")
+    plt.bar(range(min(15, len(importances))), importances[indices[:15]], color='green')
+    plt.xticks(range(min(15, len(importances))), X_train.columns[indices[:15]], rotation=90)
+    plt.tight_layout()
+    # 儲存
+    fi_plot_name = f"{plot_dir}/fi_{timestamp}.png"
+    plt.savefig(fi_plot_name)
+    print(f"📊 特徵重要性圖已儲存: {fi_plot_name}")
+    # plt.show()
 
     # =================================================
     # 5. 預測與存檔

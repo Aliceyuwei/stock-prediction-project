@@ -20,7 +20,8 @@ def add_technical_indicators(df):
     # 2. 產生時間相關特徵
     if 'date' in df.columns:
         # A. 長期趨勢 (Trend)
-        df['Date_Int'] = df['date']
+        # df['Date_Int'] = df['date']
+        df['Date_Int'] = pd.to_datetime(df['date']).astype(int) / 10**9
         
         # B. 週期性特徵 (Seasonality)
         df['Day_Mod_5'] = df['date'] % 5   # 猜測星期幾
