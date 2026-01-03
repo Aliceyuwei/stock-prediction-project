@@ -101,8 +101,34 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
     viz = ModelVisualizer(timestamp, plot_dir)
 
     # 檢查考卷路徑
-    if not os.path.exists(submission_file):
-        submission_file = 'submission.csv'
+    # if not os.path.exists(submission_file):
+    #     submission_file = 'submission.csv'
+    # =================================================
+    # 新增：自動化路徑搜尋邏輯 (解決 FileNotFoundError)
+    # =================================================
+    possible_paths = [
+        submission_file,                       # 1. 傳入的路徑 (例如 ../sample_submission.csv)
+        "submission.csv",                      # 2. 當前根目錄
+        "sample_submission.csv",               # 3. 原始預設名
+        "../submission.csv",                   # 4. 往上一層找
+        "../sample_submission.csv",            # 5. 往上一層找原始名
+        os.path.join("..", "data", "submission.csv"), # 6. 往上一層的 data 資料夾
+        "./data/submission.csv"                # 7. 當前目錄的 data 資料夾
+    ]
+
+    found_path = None
+    for p in possible_paths:
+        if p and os.path.exists(p):
+            found_path = p
+            break
+
+    if found_path:
+        submission_file = found_path
+        print(f"✅ 成功找到考卷檔案: {submission_file}")
+    else:
+        # 如果都找不到，拋出詳細錯誤並顯示當前工作目錄
+        current_dir = os.getcwd()
+        raise FileNotFoundError(f"❌ 找不到考卷檔案！目前執行目錄: {current_dir}\n試過的路徑: {possible_paths}")
     
     # --- 資料處理 ---
     submit_df = pd.read_csv(submission_file)
