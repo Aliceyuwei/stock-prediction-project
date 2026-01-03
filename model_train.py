@@ -1,7 +1,6 @@
 # =================================================
-# 1. 
+# model_train.py - 強化版：目標轉換與自動路徑偵測
 # =================================================
-# 套件導入與環境設定
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,12 +12,13 @@ from xgboost import XGBRegressor
 import optuna
 # 模型評估指標
 from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error 
+import joblib
 
 # 設定 Seaborn 風格
 sns.set_style("whitegrid")
 
 # =================================================
-# 2. 繪圖小幫手 (Visualizer Class)
+# 1. 繪圖小幫手 (Visualizer Class)
 # =================================================
 class ModelVisualizer:
     """專門負責實驗視覺化與圖片歸檔的類別"""
@@ -39,7 +39,6 @@ class ModelVisualizer:
         save_path = f"{self.plot_dir}/val_{self.timestamp}_rmse_{val_score:.2f}.png"
         plt.savefig(save_path)
         print(f"📊 驗證走勢圖已儲存: {save_path}")
-        # plt.show()
 
     def plot_feature_importance(self, model, feature_names):
         """圖 B: 特徵重要性圖"""
@@ -56,182 +55,136 @@ class ModelVisualizer:
         save_path = f"{self.plot_dir}/fi_{self.timestamp}.png"
         plt.savefig(save_path)
         print(f"📊 特徵重要性圖已儲存: {save_path}")
-        # plt.show()
         return top_feat_names
 
     def plot_correlation_heatmap(self, df, top_features, target_col):
-        """圖 C: 相關係數熱力圖 (使用 Seaborn)"""
+        """圖 C: 相關係數熱力圖"""
         plt.figure(figsize=(12, 10))
-        # 組合前 15 名特徵與目標價格欄位
         plot_cols = top_features + [target_col]
+        # 過濾掉不在 df 中的欄位
+        plot_cols = [c for c in plot_cols if c in df.columns]
         corr_matrix = df[plot_cols].corr()
         
         plt.title(f"Feature Correlation Heatmap_{self.timestamp}", fontsize=15)
-        sns.heatmap(
-            corr_matrix, 
-            annot=True, 
-            fmt=".2f", 
-            cmap="coolwarm", 
-            linewidths=0.5, 
-            square=True
-        )
+        sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="coolwarm", linewidths=0.5, square=True)
         plt.tight_layout()
         
         save_path = f"{self.plot_dir}/heatmap_{self.timestamp}.png"
         plt.savefig(save_path)
         print(f"📊 相關係數熱力圖已儲存: {save_path}")
-        # plt.show()
 
 # =================================================
-# 3. 主訓練流程 (Main Training Logic)
+# 2. 主訓練流程
 # =================================================
 def train_and_predict(df_features, submission_file='sample_submission.csv', use_optuna=False):
-    """
-    接收特徵工程後的資料，訓練 XGBoost 模型。
-    參數 use_optuna=True 時，會啟動自動調參模式。
-    """
     print("🚀 [Training] 啟動模型訓練生產線...")
     
-    # --- 初始設定 ---
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    plot_dir = "experiments/plots"
-    os.makedirs(plot_dir, exist_ok=True)
+    # --- 1. 自動偵測工作目錄與路徑 ---
+    current_path = os.getcwd()
+    # 如果是在 archive 下執行，修正路徑前綴
+    is_in_archive = os.path.basename(current_path) == "archive"
+    prefix = "" if is_in_archive else "archive/"
     
-    # 初始化繪圖工具
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+
+    # 不再強制加 archive/，讓它根據執行位置決定 experiments 資料夾在哪
+    plot_dir = "experiments/plots" 
+    os.makedirs(plot_dir, exist_ok=True)
     viz = ModelVisualizer(timestamp, plot_dir)
 
-    # 檢查考卷路徑
-    # if not os.path.exists(submission_file):
-    #     submission_file = 'submission.csv'
-    # =================================================
-    # 新增：自動化路徑搜尋邏輯 (解決 FileNotFoundError)
-    # =================================================
-    possible_paths = [
-        submission_file,                       # 1. 傳入的路徑 (例如 ../sample_submission.csv)
-        "submission.csv",                      # 2. 當前根目錄
-        "sample_submission.csv",               # 3. 原始預設名
-        "../submission.csv",                   # 4. 往上一層找
-        "../sample_submission.csv",            # 5. 往上一層找原始名
-        os.path.join("..", "data", "submission.csv"), # 6. 往上一層的 data 資料夾
-        "./data/submission.csv"                # 7. 當前目錄的 data 資料夾
-    ]
-
-    found_path = None
+    # 搜尋考卷檔案
+    possible_paths = [submission_file, "submission.csv", "sample_submission.csv", 
+                      "../sample_submission.csv", "../data/sample_submission.csv"]
+    found_submission = None
     for p in possible_paths:
-        if p and os.path.exists(p):
-            found_path = p
+        if os.path.exists(p):
+            found_submission = p
             break
-
-    if found_path:
-        submission_file = found_path
-        print(f"✅ 成功找到考卷檔案: {submission_file}")
-    else:
-        # 如果都找不到，拋出詳細錯誤並顯示當前工作目錄
-        current_dir = os.getcwd()
-        raise FileNotFoundError(f"❌ 找不到考卷檔案！目前執行目錄: {current_dir}\n試過的路徑: {possible_paths}")
     
-    # --- 資料處理 ---
-    submit_df = pd.read_csv(submission_file)
+    if not found_submission:
+        raise FileNotFoundError(f"❌ 找不到考卷檔案，請檢查路徑。目前目錄: {current_path}")
+    
+    print(f"✅ 成功找到考卷: {found_submission}")
+    submit_df = pd.read_csv(found_submission)
     target_ids = submit_df['date'].values 
-
-    # 設定目標欄位 (主角)
     target_col = '0056_close_y' 
 
-    # 為了方便切分，先將 date 設為 index
+    # --- 2. 目標值轉換 (預測漲跌 Diff) ---
     if 'date' in df_features.columns:
-        df_features_indexed = df_features.set_index('date')
-    else:
-        df_features_indexed = df_features.copy()
+        df_features = df_features.set_index('date')
     
-    # --- 切分 訓練集 (歷史資料) vs 考試集 (未來要預測的) ---
-    X_test = df_features_indexed.loc[df_features_indexed.index.isin(target_ids)] # 這是最後要交卷的
-    X_train_full = df_features_indexed.loc[~df_features_indexed.index.isin(target_ids)] # 這是所有的歷史資料
+    # 計算每日價差作為目標
+    df_features['target_diff'] = df_features[target_col].diff()
     
-    # 分離答案
-    y_train_full = X_train_full[target_col]
-    X_train_full = X_train_full.drop(columns=[target_col], errors='ignore')
-    X_test = X_test.drop(columns=[target_col], errors='ignore')
+    # 切分考試集與歷史資料
+    X_test = df_features.loc[df_features.index.isin(target_ids)].copy()
+    X_train_full_raw = df_features.loc[~df_features.index.isin(target_ids)].dropna().copy()
     
-    print(f"📚 歷史資料總數: {X_train_full.shape}")
-    print(f"📝 預測資料集: {X_test.shape}")
-    # 切分訓練與驗證集
-    split_point = int(len(X_train_full) * 0.8)
-    X_train, y_train = X_train_full.iloc[:split_point], y_train_full.iloc[:split_point]
-    X_val, y_val = X_train_full.iloc[split_point:], y_train_full.iloc[split_point:]
+    # 紀錄歷史最後一天的真實價格
+    last_real_price = df_features.loc[~df_features.index.isin(target_ids), target_col].iloc[-1]
+    
+    y_train_full = X_train_full_raw['target_diff']
+    # 特徵中移除目標價格與價差
+    X_train_full = X_train_full_raw.drop(columns=[target_col, 'target_diff'], errors='ignore')
+    X_test = X_test.drop(columns=[target_col, 'target_diff'], errors='ignore')
 
-    print(f"   👉 實際訓練用: {X_train.shape}, 驗證用: {X_val.shape}")
-    
-    # --- 模型定義與調參 ---
+    # 切分訓練與驗證
+    split_idx = int(len(X_train_full) * 0.8)
+    X_train, y_train = X_train_full.iloc[:split_idx], y_train_full.iloc[:split_idx]
+    X_val, y_val = X_train_full.iloc[split_idx:], y_train_full.iloc[split_idx:]
+    y_val_real_prices = X_train_full_raw.loc[X_val.index, target_col]
+
+    # --- 3. 模型訓練 (Optuna) ---
     if use_optuna:
-        print("🤖 [Optuna] 啟動自動化參數搜尋...")
+        print("🤖 [Optuna] 搜尋預測『漲跌動能』的最佳參數...")
         def objective(trial):
-            # 讓 AI 隨機嘗試這些參數
             params = {
-                # 1. 【核心戰術】以慢打快：更多樹，但每棵樹學少一點
-                'n_estimators': trial.suggest_int('n_estimators', 1500, 3500), # 拉高上限
-                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.05), # 降低學習率
-                
-                # 2. 深度控制：給它一點點空間，從 3-6 放寬到 3-7
-                'max_depth': trial.suggest_int('max_depth', 3, 7),
-                
-                # 3. 正則化 (維持剛才的 Log 模式，這很棒)
+                'n_estimators': trial.suggest_int('n_estimators', 1000, 3000),
+                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.05),
+                'max_depth': trial.suggest_int('max_depth', 3, 8),
                 'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
                 'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
-                
-                # 4. 稍微調低 min_child_weight (原本 1-10 有點太嚴格，改 1-5)
-                'min_child_weight': trial.suggest_int('min_child_weight', 1, 5),
-                
-                # 其他維持不變
-                'subsample': trial.suggest_float('subsample', 0.6, 0.85),
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 0.85),
-                'n_jobs': -1,
-                'random_state': 42
+                'random_state': 42, 'n_jobs': -1
             }
-            
-            # 訓練一個臨時模型
-            temp_model = XGBRegressor(**params)
-            temp_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
+            m = XGBRegressor(**params)
+            m.fit(X_train, y_train)
+            # 驗證時還原價格計算 RMSE
+            p_diff = m.predict(X_val)
+            p_real = X_train_full_raw[target_col].shift(1).loc[X_val.index] + p_diff
+            return np.sqrt(mean_squared_error(y_val_real_prices, p_real))
 
-            # 算分數
-            return np.sqrt(mean_squared_error(y_val, temp_model.predict(X_val)))
-
-        # 開始跑 20 次實驗 (你可以改 n_trials=50 會更準)
         study = optuna.create_study(direction='minimize')
         study.optimize(objective, n_trials=20)
-        
-        print(f"🎉 找到最佳參數: {study.best_params}")
-        print(f"📉 最佳分數 (RMSE): {study.best_value:.4f}")
-        val_score = study.best_value
-        model = XGBRegressor(**study.best_params, n_jobs=-1, random_state=42)
+        model = XGBRegressor(**study.best_params)
     else:
-        print("🤝 使用手動預設參數模式...")
+        model = XGBRegressor(n_estimators=1000, learning_rate=0.03, max_depth=6, random_state=42)
 
-        model = XGBRegressor(n_estimators=1000, learning_rate=0.05, max_depth=6, random_state=42, n_jobs=-1)
-        model.fit(X_train, y_train)
-        val_score = np.sqrt(mean_squared_error(y_val, model.predict(X_val)))
-
-    # --- 視覺化診斷 (採用 ModelVisualizer) ---
+    # --- 4. 驗證與視覺化 ---
     model.fit(X_train, y_train)
-    preds = model.predict(X_val)
-    mape = mean_absolute_percentage_error(y_val, preds)
+    val_p_diff = model.predict(X_val)
+    # 還原價格：前日價格 + 預測漲跌
+    val_p_real = X_train_full_raw[target_col].shift(1).loc[X_val.index] + val_p_diff
+    
+    score = np.sqrt(mean_squared_error(y_val_real_prices, val_p_real))
+    mape = mean_absolute_percentage_error(y_val_real_prices, val_p_real)
 
-    # 依序執行繪圖任務 A, B, C
-    viz.plot_validation_curve(y_val, preds, val_score, mape)
+    viz.plot_validation_curve(y_val_real_prices, val_p_real, score, mape)
     top_feats = viz.plot_feature_importance(model, X_train.columns)
     viz.plot_correlation_heatmap(df_features, top_feats, target_col)
 
-    # --- 最終產出 ---
-    print("🚀 使用完整歷史資料重新訓練 (Full Retrain)...")
+    # --- 5. 產出預測 ---
     model.fit(X_train_full, y_train_full)
+    test_diffs = model.predict(X_test)
     
-    print("🔮 正在進行最終預測...")
-    predictions = model.predict(X_test)
+    # 累加還原考試集價格
+    final_preds = []
+    curr_p = last_real_price
+    for d in test_diffs:
+        curr_p += d
+        final_preds.append(curr_p)
 
-    pred_df = pd.DataFrame({'date': X_test.index, 'prediction': predictions})
-    final_submission = submit_df[['date']].merge(pred_df, on='date', how='left')
-    target_submit_col = [c for c in submit_df.columns if c != 'date'][0]
-    final_submission[target_submit_col] = final_submission['prediction']
-    final_submission[['date', target_submit_col]].to_csv('submission.csv', index=False)
+    submit_df[submit_df.columns[1]] = final_preds
+    submit_df.to_csv('submission.csv', index=False)
+    print(f"🎉 預測完成！RMSE: {score:.4f}")
     
-    print(f"🎉 考卷已填寫完成: submission.csv")
-    return model, val_score
+    return model, score
