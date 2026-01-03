@@ -1,34 +1,90 @@
 # =================================================
-# 1. 資料處理與數學運算
+# 1. 
 # =================================================
+# 套件導入與環境設定
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import datetime
-
-# =================================================
-# 2. 機器學習模型與調參工具
-# =================================================
+# 機器學習模型與調參工具
 from xgboost import XGBRegressor
 import optuna
-# 備註：如果你之後要恢復使用集成模型 (Voting)，記得要把 RandomForestRegressor, 
-# LGBMRegressor, VotingRegressor 加回來
-
-# =================================================
-# 3. 模型評估指標
-# =================================================
+# 模型評估指標
 from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error 
-
-# ---------------------------
-# import matplotlib
-# matplotlib.use('TkAgg') # Mac 環境建議維持 TkAgg
-# ---------------------------
 
 # 設定 Seaborn 風格
 sns.set_style("whitegrid")
 
+# =================================================
+# 2. 繪圖小幫手 (Visualizer Class)
+# =================================================
+class ModelVisualizer:
+    """專門負責實驗視覺化與圖片歸檔的類別"""
+    def __init__(self, timestamp, plot_dir):
+        self.timestamp = timestamp
+        self.plot_dir = plot_dir
+
+    def plot_validation_curve(self, y_val, preds, val_score, mape):
+        """圖 A: 驗證集預測走勢圖"""
+        plt.figure(figsize=(12, 5))
+        plt.plot(y_val.index, y_val, label='Actual', color='blue', marker='o', markersize=4)
+        plt.plot(y_val.index, preds, label='Predicted', color='red', linestyle='--', marker='x', markersize=4)
+        plt.title(f"Validation Period: Actual vs Predicted\n(RMSE: {val_score:.4f}, MAPE: {mape:.2%})")
+        plt.xticks(rotation=45)
+        plt.legend()
+        plt.tight_layout()
+        
+        save_path = f"{self.plot_dir}/val_{self.timestamp}_rmse_{val_score:.2f}.png"
+        plt.savefig(save_path)
+        print(f"📊 驗證走勢圖已儲存: {save_path}")
+        # plt.show()
+
+    def plot_feature_importance(self, model, feature_names):
+        """圖 B: 特徵重要性圖"""
+        plt.figure(figsize=(10, 6))
+        importances = model.feature_importances_
+        indices = np.argsort(importances)[::-1][:15]
+        top_feat_names = feature_names[indices].tolist()
+        
+        plt.title(f"Top 15 Feature Importances_{self.timestamp}")
+        plt.bar(range(len(top_feat_names)), importances[indices], color='green')
+        plt.xticks(range(len(top_feat_names)), top_feat_names, rotation=90)
+        plt.tight_layout()
+        
+        save_path = f"{self.plot_dir}/fi_{self.timestamp}.png"
+        plt.savefig(save_path)
+        print(f"📊 特徵重要性圖已儲存: {save_path}")
+        # plt.show()
+        return top_feat_names
+
+    def plot_correlation_heatmap(self, df, top_features, target_col):
+        """圖 C: 相關係數熱力圖 (使用 Seaborn)"""
+        plt.figure(figsize=(12, 10))
+        # 組合前 15 名特徵與目標價格欄位
+        plot_cols = top_features + [target_col]
+        corr_matrix = df[plot_cols].corr()
+        
+        plt.title(f"Feature Correlation Heatmap_{self.timestamp}", fontsize=15)
+        sns.heatmap(
+            corr_matrix, 
+            annot=True, 
+            fmt=".2f", 
+            cmap="coolwarm", 
+            linewidths=0.5, 
+            square=True
+        )
+        plt.tight_layout()
+        
+        save_path = f"{self.plot_dir}/heatmap_{self.timestamp}.png"
+        plt.savefig(save_path)
+        print(f"📊 相關係數熱力圖已儲存: {save_path}")
+        # plt.show()
+
+# =================================================
+# 3. 主訓練流程 (Main Training Logic)
+# =================================================
 def train_and_predict(df_features, submission_file='sample_submission.csv', use_optuna=False):
     """
     接收特徵工程後的資料，訓練 XGBoost 模型。
@@ -36,20 +92,19 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
     """
     print("🚀 [Training] 啟動模型訓練生產線...")
     
-    # 建立圖片儲存路徑
-    plot_dir = "experiments/plots"
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
+    # --- 初始設定 ---
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    plot_dir = "experiments/plots"
+    os.makedirs(plot_dir, exist_ok=True)
+    
+    # 初始化繪圖工具
+    viz = ModelVisualizer(timestamp, plot_dir)
 
-    # =================================================
-    # 1. 準備資料與定義目標
-    # =================================================
+    # 檢查考卷路徑
     if not os.path.exists(submission_file):
-        # 防呆機制：如果找不到 sample 檔案，嘗試尋找根目錄的 submission.csv
         submission_file = 'submission.csv'
-        
-    # 讀取考卷，確認要預測哪些 ID (Date)
+    
+    # --- 資料處理 ---
     submit_df = pd.read_csv(submission_file)
     target_ids = submit_df['date'].values 
 
@@ -58,11 +113,13 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
 
     # 為了方便切分，先將 date 設為 index
     if 'date' in df_features.columns:
-        df_features = df_features.set_index('date')
+        df_features_indexed = df_features.set_index('date')
+    else:
+        df_features_indexed = df_features.copy()
     
     # --- 切分 訓練集 (歷史資料) vs 考試集 (未來要預測的) ---
-    X_test = df_features.loc[df_features.index.isin(target_ids)] # 這是最後要交卷的
-    X_train_full = df_features.loc[~df_features.index.isin(target_ids)] # 這是所有的歷史資料
+    X_test = df_features_indexed.loc[df_features_indexed.index.isin(target_ids)] # 這是最後要交卷的
+    X_train_full = df_features_indexed.loc[~df_features_indexed.index.isin(target_ids)] # 這是所有的歷史資料
     
     # 分離答案
     y_train_full = X_train_full[target_col]
@@ -71,29 +128,16 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
     
     print(f"📚 歷史資料總數: {X_train_full.shape}")
     print(f"📝 預測資料集: {X_test.shape}")
-
-    # =================================================
-    # 2. 內部驗證 (為了算出分數)
-    # =================================================
-    # 切出後 20% 的資料當作驗證集 (Validation Set)
+    # 切分訓練與驗證集
     split_point = int(len(X_train_full) * 0.8)
+    X_train, y_train = X_train_full.iloc[:split_point], y_train_full.iloc[:split_point]
+    X_val, y_val = X_train_full.iloc[split_point:], y_train_full.iloc[split_point:]
 
-    X_train = X_train_full.iloc[:split_point]
-    y_train = y_train_full.iloc[:split_point]
-
-    X_val = X_train_full.iloc[split_point:]
-    y_val = y_train_full.iloc[split_point:]
-    
     print(f"   👉 實際訓練用: {X_train.shape}, 驗證用: {X_val.shape}")
-
-    # =================================================
-    # 3. 定義模型 (分為一般模式 vs 自動調參模式)
-    # =================================================
     
+    # --- 模型定義與調參 ---
     if use_optuna:
-        print("🤖 [Optuna] 啟動！正在尋找最強參數 (這會花一點時間)...")
-        
-        # 定義給 Optuna 的考試規則
+        print("🤖 [Optuna] 啟動自動化參數搜尋...")
         def objective(trial):
             # 讓 AI 隨機嘗試這些參數
             params = {
@@ -121,11 +165,9 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
             # 訓練一個臨時模型
             temp_model = XGBRegressor(**params)
             temp_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
-            
+
             # 算分數
-            preds = temp_model.predict(X_val)
-            rmse = np.sqrt(mean_squared_error(y_val, preds))
-            return rmse
+            return np.sqrt(mean_squared_error(y_val, temp_model.predict(X_val)))
 
         # 開始跑 20 次實驗 (你可以改 n_trials=50 會更準)
         study = optuna.create_study(direction='minimize')
@@ -133,91 +175,37 @@ def train_and_predict(df_features, submission_file='sample_submission.csv', use_
         
         print(f"🎉 找到最佳參數: {study.best_params}")
         print(f"📉 最佳分數 (RMSE): {study.best_value:.4f}")
-        
-        # 使用找到的最強參數建立模型
-        best_params = study.best_params
-        model = XGBRegressor(**best_params, n_jobs=-1, random_state=42)
-        
-    else:
-        # 這是你原本的手動設定 (Fallback)
-        print("🤝 使用預設參數模式...")
-        model = XGBRegressor(
-            n_estimators=1000, 
-            learning_rate=0.05, 
-            max_depth=6,
-            random_state=42,
-            n_jobs=-1
-        )
-
-    # =================================================
-    # 4. 訓練與評分
-    # =================================================
-    print("🚀 使用完整歷史資料重新訓練 (Full Retrain)...")
-    model.fit(X_train_full, y_train_full)
-    
-    # 算一下驗證分數 (如果是 Optuna 模式，直接用最佳分數)
-    if use_optuna:
         val_score = study.best_value
+        model = XGBRegressor(**study.best_params, n_jobs=-1, random_state=42)
     else:
-        # 手動模式要重算一次
-        temp_model = model # 這裡只是一個近似，實際上 Full Retrain 後無法算 Val Score，所以我們沿用之前的概念
-        # 為了簡單起見，我們重新用 80/20 訓練一次來拿分數，或是直接回傳 0
-        # 這裡簡單處理：回傳最後一次驗證的分數
-        model_for_score = XGBRegressor(**model.get_params())
-        model_for_score.fit(X_train, y_train)
-        val_preds = model_for_score.predict(X_val)
-        val_score = np.sqrt(mean_squared_error(y_val, val_preds))
-        print(f"✅ 手動模式驗證分數: {val_score:.4f}")
+        print("🤝 使用手動預設參數模式...")
 
-    # =================================================
-    # 畫圖並儲存紀錄
-    # =================================================
+        model = XGBRegressor(n_estimators=1000, learning_rate=0.05, max_depth=6, random_state=42, n_jobs=-1)
+        model.fit(X_train, y_train)
+        val_score = np.sqrt(mean_squared_error(y_val, model.predict(X_val)))
+
+    # --- 視覺化診斷 (採用 ModelVisualizer) ---
     model.fit(X_train, y_train)
     preds = model.predict(X_val)
     mape = mean_absolute_percentage_error(y_val, preds)
 
-    # 圖 A: 預測走勢
-    plt.figure(figsize=(12, 5))
-    plt.plot(X_val.index, y_val, label='Actual', color='blue', marker='o', markersize=4)
-    plt.plot(X_val.index, preds, label='Predicted', color='red', linestyle='--', marker='x', markersize=4)
-    plt.title(f"Validation: {timestamp} (RMSE: {val_score:.4f}, MAPE: {mape:.2%})")
-    plt.xticks(rotation=45)
-    plt.legend()
-    plt.tight_layout()
-    # 儲存
-    val_plot_name = f"{plot_dir}/val_{timestamp}_rmse_{val_score:.2f}.png"
-    plt.savefig(val_plot_name)
-    print(f"📊 驗證走勢圖已儲存: {val_plot_name}")
-    # plt.show()
+    # 依序執行繪圖任務 A, B, C
+    viz.plot_validation_curve(y_val, preds, val_score, mape)
+    top_feats = viz.plot_feature_importance(model, X_train.columns)
+    viz.plot_correlation_heatmap(df_features, top_feats, target_col)
 
-    # 圖 B: 特徵重要性
-    plt.figure(figsize=(10, 6))
-    importances = model.feature_importances_
-    indices = np.argsort(importances)[::-1][:15]
-    plt.title(f"Top 15 Features_{timestamp}")
-    plt.bar(range(min(15, len(importances))), importances[indices[:15]], color='green')
-    plt.xticks(range(min(15, len(importances))), X_train.columns[indices[:15]], rotation=90)
-    plt.tight_layout()
-    # 儲存
-    fi_plot_name = f"{plot_dir}/fi_{timestamp}.png"
-    plt.savefig(fi_plot_name)
-    print(f"📊 特徵重要性圖已儲存: {fi_plot_name}")
-    # plt.show()
-
-    # =================================================
-    # 5. 預測與存檔
-    # =================================================
+    # --- 最終產出 ---
+    print("🚀 使用完整歷史資料重新訓練 (Full Retrain)...")
+    model.fit(X_train_full, y_train_full)
+    
     print("🔮 正在進行最終預測...")
     predictions = model.predict(X_test)
-    
+
     pred_df = pd.DataFrame({'date': X_test.index, 'prediction': predictions})
     final_submission = submit_df[['date']].merge(pred_df, on='date', how='left')
     target_submit_col = [c for c in submit_df.columns if c != 'date'][0]
     final_submission[target_submit_col] = final_submission['prediction']
+    final_submission[['date', target_submit_col]].to_csv('submission.csv', index=False)
     
-    output_filename = 'submission.csv'
-    final_submission[['date', target_submit_col]].to_csv(output_filename, index=False)
-    
-    print(f"🎉 考卷已填寫完成: {output_filename}")
-    
+    print(f"🎉 考卷已填寫完成: submission.csv")
     return model, val_score
