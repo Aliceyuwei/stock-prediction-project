@@ -36,6 +36,30 @@
 │   └── (原始 .csv 檔案)
 │
 └── 📜 requirements.txt       # 專案依賴套件列表
+－－－
+📁 stock-prediction-project/
+│
+├── 🚀 自動化排程區 (Airflow DAGs)
+│   └── 📁 dags/
+│       └── 📜 stock_workflow.py  # 定義每日下午 3:00 的預測自動化流程
+│
+├── 📊 experiments/           # [數據與實驗紀錄]
+│   ├── training_log.csv      # 自動記錄每次實驗的分數、筆記與特徵
+│   └── models/               # 存放訓練好的模型 (.pkl)，方便重複使用
+│
+├── 🛠️ 核心功能模組 (.py)
+│   ├── 📈 app.py                # Streamlit 視覺化監控看板入口
+│   ├── 🧠 model_train.py        # 模型訓練、驗證與產出結果的核心邏輯
+│   ├── 📥 data_loader.py         # 負責讀取與合併 0056 及成分股 CSV
+│   ├── 🧹 data_preprocessing.py  # 資料清洗、排序與缺失值處理
+│   ├── 🧪 feature_eng.py         # 計算技術指標 (RSI, MACD, 乖離率)
+│   └── 📝 experiment_logger.py   # 自動化實驗紀錄系統
+│
+└── 📜 環境與文件
+    ├── 📜 main.ipynb            # [實驗室] 研究開發用 Notebook
+    ├── 📜 README.md             # 專案說明文件 (妳現在看的地方)
+    ├── 📜 .gitignore            # Git 忽略清單 (已設定排除敏感 Airflow 資訊)
+    └── 📜 requirements.txt      # 專案依賴套件清單
 ```
 
 ---
@@ -47,3 +71,25 @@
 
 ```bash
 pip install -r requirements.txt
+```
+
+### 2. 啟動互動式看板 (Streamlit)
+執行以下指令即可開啟 Web 介面查看 0056 預測趨勢：
+
+```bash
+streamlit run app.py
+```
+存取路徑：預設為 http://localhost:8501
+
+### 3. 啟動自動化排程 (Airflow 3.x)
+若要啟動每日下午 3:00 的自動化訓練流程，請執行：
+
+```bash
+# 1. 設定家目錄為當前專案路徑
+export AIRFLOW_HOME=$(pwd)
+
+# 2. 啟動 Airflow (Standalone 模式)
+airflow standalone
+```
+管理後台：http://localhost:8080
+登入憑證：密碼請參閱專案根目錄下的 simple_auth_manager_passwords.json.generated 檔案
