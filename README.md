@@ -85,11 +85,8 @@ streamlit run app.py
 若要啟動每日下午 3:00 的自動化訓練流程，請執行：
 
 ```bash
-# 1. 設定家目錄為當前專案路徑
-export AIRFLOW_HOME=$(pwd)
-
-# 2. 啟動 Airflow (Standalone 模式)
-airflow standalone
+# 設定家目錄為當前專案路徑 & 啟動 Airflow (Standalone 模式)
+export AIRFLOW_HOME=$(pwd) && airflow standalone
 ```
 管理後台：http://localhost:8080
 登入憑證：密碼請參閱專案根目錄下的 simple_auth_manager_passwords.json.generated 檔案
