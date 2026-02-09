@@ -19,26 +19,6 @@
 ```text
 📁 stock-prediction-project/
 │
-├── 📜 main.ipynb             # [中控台] 唯一的執行入口。負責參數設定、呼叫模組、視覺化分析。
-│
-├── 🛠️ src (核心模組)
-│   ├── data_loader.py        # 負責讀取與合併原始 CSV 資料
-│   ├── data_preprocessing.py # 負責資料清洗 (處理空值、排序)
-│   ├── feature_eng.py        # 負責特徵工程 (計算 RSI, MACD, 週期特徵, 乖離率)
-│   ├── model_train.py        # 負責模型訓練、驗證切分、產出預測結果
-│   └── experiment_logger.py  # 負責自動寫入實驗紀錄 (CSV)
-│
-├── 📁 experiments/           # [實驗紀錄區]
-│   ├── training_log.csv      # 自動記錄每次實驗的分數、筆記與特徵
-│   └── models/               # 存放訓練好的模型 (.pkl)，方便重複使用
-│
-├── 📁 data/                  # [資料區] (Git Ignored)
-│   └── (原始 .csv 檔案)
-│
-└── 📜 requirements.txt       # 專案依賴套件列表
-－－－
-📁 stock-prediction-project/
-│
 ├── 🚀 自動化排程區 (Airflow DAGs)
 │   └── 📁 dags/
 │       └── 📜 stock_workflow.py  # 定義每日下午 3:00 的預測自動化流程
