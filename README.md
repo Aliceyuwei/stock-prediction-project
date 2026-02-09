@@ -1,7 +1,7 @@
 # 📈 0056 ETF 股價預測與自動化監控系統
 
-> **目標**：透過機器學習預測 0056 (元大高股息) 收盤價，並實現每日自動化訓練與視覺化監控。
-> **表現**：最終成績 **RMSE 39.02**，超越 Baseline Good (39.95)。
+> * **目標**：透過機器學習預測 0056 (元大高股息) 收盤價，並實現每日自動化訓練與視覺化監控。
+> * **表現**：最終成績 **RMSE 39.02**，超越 Baseline Good (39.95)。
 
 ## 🌟 核心特色
 
@@ -37,8 +37,8 @@
 │
 └── 📜 環境與文件
     ├── 📜 main.ipynb            # [實驗室] 研究開發用 Notebook
-    ├── 📜 README.md             # 專案說明文件 (妳現在看的地方)
-    ├── 📜 .gitignore            # Git 忽略清單 (已設定排除敏感 Airflow 資訊)
+    ├── 📜 README.md             # 專案說明文件
+    ├── 📜 .gitignore            # Git 忽略清單
     └── 📜 requirements.txt      # 專案依賴套件清單
 ```
 
@@ -59,7 +59,6 @@ pip install -r requirements.txt
 ```bash
 streamlit run app.py
 ```
-存取路徑：預設為 http://localhost:8501
 
 ### 3. 啟動自動化排程 (Airflow 3.x)
 若要啟動每日下午 3:00 的自動化訓練流程，請執行：
@@ -68,5 +67,4 @@ streamlit run app.py
 # 設定家目錄為當前專案路徑 & 啟動 Airflow (Standalone 模式)
 export AIRFLOW_HOME=$(pwd) && airflow standalone
 ```
-管理後台：http://localhost:8080
 登入憑證：密碼請參閱專案根目錄下的 simple_auth_manager_passwords.json.generated 檔案
