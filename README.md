@@ -1,14 +1,14 @@
-# 📈 Stock Prediction AI: 0056 ETF Price Forecasting
+# 📈 0056 ETF 股價預測與自動化監控系統
 
-> 透過機器學習預測 0056 元大高股息 ETF 收盤價。
-> 結合特徵工程 (Feature Engineering) 與 XGBoost 模型，達成 RMSE 39.02 的優異成績。
+> **目標**：透過機器學習預測 0056 (元大高股息) 收盤價，並實現每日自動化訓練與視覺化監控。
+> **表現**：最終成績 **RMSE 39.02**，超越 Baseline Good (39.95)。
 
-## 🏆 Project Highlights (專案亮點)
+## 🌟 核心特色
 
-* **Performance**: 最終成績 **RMSE 39.02**，成功超越 Baseline Good (39.95)。
-* **Modular Pipeline**: 將資料處理流程模組化，實現「實驗室 (Notebook)」與「產線 (Script)」分離的專業架構。
-* **Experiment Tracking**: 內建實驗紀錄系統，自動追蹤每次訓練的參數與分數。
-* **Feature Engineering**: 發現關鍵成分股 (2352 佳世達) 的動能指標 (Return/Bias) 對預測有決定性影響。
+* **全自動排程**：整合 **Apache Airflow 3.x**，每日下午 3:00 自動觸發模型更新。
+* **互動式看板**：使用 **Streamlit** 打造視覺化介面，即時掌握預測趨勢。
+* **專業架構**：採用實驗室 (Notebook) 與生產環境 (Python Scripts) 分離的設計。
+* **特徵工程**：導入 RSI、MACD、以及關鍵成分股 (如 2352 佳世達) 的動能指標。
 
 ---
 
